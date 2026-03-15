@@ -248,6 +248,95 @@ def search_videos(
     return results
 
 
+# ── YouTube Analytics API クライアント ──────────────────────────────────
+
+def get_video_analytics(
+    analytics_client,
+    channel_id: str,
+    start_date: str,
+    end_date: str,
+    video_id: str | None = None,
+    metrics: list[str] | None = None,
+    dimensions: list[str] | None = None,
+) -> dict:
+    if metrics is None:
+        metrics = [
+            "views", "estimatedMinutesWatched", "averageViewDuration",
+            "averageViewPercentage", "subscribersGained", "subscribersLost",
+            "likes", "dislikes", "comments", "shares",
+            "impressions", "impressionClickThroughRate",
+        ]
+    if dimensions is None:
+        dimensions = ["day"]
+
+    params = dict(
+        ids=f"channel=={channel_id}",
+        startDate=start_date,
+        endDate=end_date,
+        metrics=",".join(metrics),
+        dimensions=",".join(dimensions),
+    )
+    if video_id:
+        params["filters"] = f"video=={video_id}"
+
+    return analytics_client.reports().query(**params).execute()
+
+
+def get_demographics(
+    analytics_client,
+    channel_id: str,
+    start_date: str,
+    end_date: str,
+    video_id: str | None = None,
+) -> dict:
+    params = dict(
+        ids=f"channel=={channel_id}",
+        startDate=start_date,
+        endDate=end_date,
+        metrics="viewerPercentage",
+        dimensions="ageGroup,gender",
+    )
+    if video_id:
+        params["filters"] = f"video=={video_id}"
+    return analytics_client.reports().query(**params).execute()
+
+
+def get_traffic_sources(
+    analytics_client,
+    channel_id: str,
+    start_date: str,
+    end_date: str,
+) -> dict:
+    return analytics_client.reports().query(
+        ids=f"channel=={channel_id}",
+        startDate=start_date,
+        endDate=end_date,
+        metrics="views,estimatedMinutesWatched",
+        dimensions="insightTrafficSourceType",
+    ).execute()
+
+
+def get_revenue(
+    analytics_client,
+    channel_id: str,
+    start_date: str,
+    end_date: str,
+) -> dict:
+    return analytics_client.reports().query(
+        ids=f"channel=={channel_id}",
+        startDate=start_date,
+        endDate=end_date,
+        metrics="estimatedRevenue,estimatedAdRevenue,grossRevenue,cpm,adImpressions",
+        dimensions="day",
+    ).execute()
+
+
+def analytics_response_to_records(response: dict) -> list[dict]:
+    """Analytics APIレスポンスを [{col: val, ...}] 形式に変換"""
+    headers = [h["name"] for h in response.get("columnHeaders", [])]
+    return [dict(zip(headers, row)) for row in response.get("rows", [])]
+
+
 def run_auth_flow(config: dict) -> None:
     """--auth コマンド: 対話認証フローを実行してトークンを保存"""
     print("🔑 OAuth2認証フローを開始します...")
