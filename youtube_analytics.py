@@ -451,6 +451,143 @@ def calculate_roi(
     }
 
 
+# ── 出力レイヤー ─────────────────────────────────────────────────────────
+import io as _io
+from datetime import datetime, timezone
+
+FIELD_DESCRIPTIONS: dict[str, str] = {
+    "views":                       "総再生回数",
+    "estimatedMinutesWatched":     "推定視聴時間（分）",
+    "averageViewDuration":         "平均視聴時間（秒）",
+    "averageViewPercentage":       "平均視聴率（%）",
+    "subscribersGained":           "登録者増加数",
+    "subscribersLost":             "登録解除数",
+    "likes":                       "高評価数",
+    "comments":                    "コメント数",
+    "shares":                      "共有数",
+    "impressions":                 "インプレッション数",
+    "impressionClickThroughRate":  "インプレッションCTR（%）",
+    "estimatedRevenue":            "推定総収益（USD）",
+    "estimatedAdRevenue":          "推定広告収益（USD）",
+    "grossRevenue":                "総収益（USD）",
+    "cpm":                         "CPM（1000インプレッションあたりコスト、USD）",
+    "viewerPercentage":            "視聴者割合（%）",
+    "ageGroup":                    "年齢層（age13-17, age18-24, age25-34, age35-44, age45-54, age55-64, age65-）",
+    "gender":                      "性別（male/female）",
+    "cost_yen":                    "広告費（円）",
+    "cost_per_subscriber_yen":     "登録者1人あたり広告費（円）",
+    "cost_per_view_yen":           "再生1回あたり広告費（円）",
+    "subscriber_per_cost_ratio":   "1円あたりの登録者獲得率",
+}
+
+SCHEMA: dict[str, Any] = {
+    "channel_info": {
+        "description": "チャンネル基本情報",
+        "properties": {
+            "id": {"type": "string", "description": "チャンネルID"},
+            "snippet.title": {"type": "string", "description": "チャンネル名"},
+            "statistics.subscriberCount": {"type": "string", "description": "登録者数"},
+            "statistics.viewCount": {"type": "string", "description": "総再生数"},
+            "statistics.videoCount": {"type": "string", "description": "動画数"},
+        }
+    },
+    "analytics": {
+        "description": "動画パフォーマンス指標（YouTube Analytics API）",
+        "properties": {k: {"type": "number", "description": v}
+                      for k, v in FIELD_DESCRIPTIONS.items()
+                      if k not in ("ageGroup", "gender", "cost_yen",
+                                   "cost_per_subscriber_yen", "cost_per_view_yen",
+                                   "subscriber_per_cost_ratio")},
+    },
+    "roi": {
+        "description": "広告ROI指標",
+        "properties": {k: {"type": "number", "description": v}
+                      for k, v in FIELD_DESCRIPTIONS.items()
+                      if k in ("cost_yen", "cost_per_subscriber_yen",
+                               "cost_per_view_yen", "subscriber_per_cost_ratio")},
+    },
+}
+
+
+def generate_schema() -> dict:
+    return SCHEMA
+
+
+def add_field_context(data: dict) -> dict:
+    """データに _context フィールドを追加（LLM向け）"""
+    if isinstance(data, dict):
+        context = {k: FIELD_DESCRIPTIONS[k]
+                  for k in data if k in FIELD_DESCRIPTIONS}
+        if context:
+            return {**data, "_context": context}
+    return data
+
+
+def format_output(
+    data: Any,
+    fmt: str = "json",
+    pretty: bool = False,
+    with_meta: bool = True,
+    query_params: dict | None = None,
+    with_context: bool = False,
+    prompt_hint: bool = False,
+) -> str:
+    """データを指定フォーマットで文字列に変換"""
+
+    if with_context and isinstance(data, dict):
+        data = add_field_context(data)
+    elif with_context and isinstance(data, list):
+        data = [add_field_context(d) if isinstance(d, dict) else d for d in data]
+
+    if fmt == "json":
+        if with_meta:
+            payload: dict[str, Any] = {
+                "meta": {
+                    "generated_at": datetime.now(timezone.utc).isoformat(),
+                    "query": query_params or {},
+                    "schema_hint": "実行時に --schema オプションで全フィールド定義を確認できます",
+                },
+                "data": data,
+            }
+            if prompt_hint:
+                payload["meta"]["llm_usage_hint"] = (
+                    "このJSONをLLMに渡す場合: data フィールドに分析対象データが含まれます。"
+                    "meta.query で取得条件を確認してください。"
+                    "--with-context オプションで各フィールドの日本語説明が付与されます。"
+                )
+        else:
+            payload = data
+        indent = 2 if pretty else None
+        return json.dumps(payload, ensure_ascii=False, indent=indent)
+
+    elif fmt == "ndjson":
+        items = data if isinstance(data, list) else [data]
+        return "\n".join(json.dumps(item, ensure_ascii=False) for item in items)
+
+    elif fmt == "csv":
+        if not isinstance(data, list) or not data:
+            return ""
+        output = _io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=data[0].keys())
+        writer.writeheader()
+        writer.writerows(data)
+        return output.getvalue()
+
+    else:
+        raise ValueError(f"未対応のフォーマット: {fmt}. json/csv/ndjson から選択してください。")
+
+
+def write_output(content: str, output_path: str) -> None:
+    """標準出力またはファイルに書き出す"""
+    if output_path == "-":
+        sys.stdout.write(content)
+        if not content.endswith("\n"):
+            sys.stdout.write("\n")
+    else:
+        Path(output_path).write_text(content, encoding="utf-8")
+        print(f"✅ 出力完了: {output_path}", file=sys.stderr)
+
+
 def run_auth_flow(config: dict) -> None:
     """--auth コマンド: 対話認証フローを実行してトークンを保存"""
     print("🔑 OAuth2認証フローを開始します...")
