@@ -105,3 +105,69 @@ def _deep_merge(base: dict, override: dict) -> None:
             _deep_merge(base[k], v)
         else:
             base[k] = v
+
+
+# ── 認証レイヤー ─────────────────────────────────────────────────────────
+from googleapiclient.discovery import build
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+
+YOUTUBE_SCOPES = [
+    "https://www.googleapis.com/auth/youtube.readonly",
+    "https://www.googleapis.com/auth/yt-analytics.readonly",
+    "https://www.googleapis.com/auth/yt-analytics-monetary.readonly",
+]
+
+GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords"
+
+ALL_SCOPES = YOUTUBE_SCOPES + [GOOGLE_ADS_SCOPE]
+
+
+def build_youtube_data_client(api_key: str):
+    return build("youtube", "v3", developerKey=api_key)
+
+
+def build_analytics_client(credentials):
+    return build("youtubeAnalytics", "v2", credentials=credentials)
+
+
+def build_reporting_client(credentials):
+    return build("youtubereporting", "v1", credentials=credentials)
+
+
+def load_oauth_credentials(
+    token_file: str,
+    client_secrets: str,
+    scopes: list[str],
+    token_file_exists: bool | None = None,
+) -> Credentials:
+    """OAuth2トークンをロード、必要に応じてリフレッシュ・新規取得"""
+    exists = token_file_exists if token_file_exists is not None else Path(token_file).exists()
+    creds = None
+
+    if exists:
+        creds = Credentials.from_authorized_user_file(token_file, scopes)
+
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(client_secrets, scopes)
+            creds = flow.run_local_server(port=0)
+        Path(token_file).parent.mkdir(parents=True, exist_ok=True)
+        Path(token_file).write_text(creds.to_json())
+
+    return creds
+
+
+def run_auth_flow(config: dict) -> None:
+    """--auth コマンド: 対話認証フローを実行してトークンを保存"""
+    print("🔑 OAuth2認証フローを開始します...")
+    creds = load_oauth_credentials(
+        token_file=config["auth"]["token_file"],
+        client_secrets=config["auth"]["client_secrets"],
+        scopes=ALL_SCOPES,
+    )
+    print(f"✅ 認証完了。トークンを保存しました: {config['auth']['token_file']}")
+    return creds
