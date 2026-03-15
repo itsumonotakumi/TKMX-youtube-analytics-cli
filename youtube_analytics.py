@@ -161,6 +161,93 @@ def load_oauth_credentials(
     return creds
 
 
+# ── YouTube Data API クライアント ────────────────────────────────────────
+
+def get_channel_info(yt_client, channel_id: str | None) -> dict:
+    """チャンネル情報を取得。channel_id=None の場合は自チャンネル"""
+    params = dict(
+        part="snippet,statistics,contentDetails,brandingSettings",
+        maxResults=1,
+    )
+    if channel_id:
+        params["id"] = channel_id
+    else:
+        params["mine"] = True
+
+    resp = yt_client.channels().list(**params).execute()
+    items = resp.get("items", [])
+    if not items:
+        raise ValueError(f"チャンネルが見つかりません: {channel_id or 'mine'}")
+    return items[0]
+
+
+def list_videos(
+    yt_client,
+    channel_id: str | None,
+    max_results: int = 50,
+    all_pages: bool = False,
+) -> list[dict]:
+    """チャンネルの動画一覧を取得"""
+    ch = get_channel_info(yt_client, channel_id)
+    uploads_id = ch["contentDetails"]["relatedPlaylists"]["uploads"]
+
+    videos = []
+    page_token = None
+
+    while True:
+        params = dict(
+            part="snippet,contentDetails,statistics",
+            playlistId=uploads_id,
+            maxResults=min(max_results - len(videos), 50),
+        )
+        if page_token:
+            params["pageToken"] = page_token
+
+        resp = yt_client.playlistItems().list(**params).execute()
+        videos.extend(resp.get("items", []))
+        page_token = resp.get("nextPageToken")
+
+        if not all_pages or not page_token or len(videos) >= max_results:
+            break
+
+    return videos
+
+
+def search_videos(
+    yt_client,
+    query: str,
+    region: str | None = None,
+    category_id: str | None = None,
+    max_results: int = 50,
+    all_pages: bool = False,
+) -> list[dict]:
+    """キーワード検索"""
+    params = dict(
+        part="snippet",
+        q=query,
+        type="video",
+        maxResults=min(max_results, 50),
+    )
+    if region:
+        params["regionCode"] = region
+    if category_id:
+        params["videoCategoryId"] = category_id
+
+    results = []
+    page_token = None
+
+    while True:
+        if page_token:
+            params["pageToken"] = page_token
+        resp = yt_client.search().list(**params).execute()
+        results.extend(resp.get("items", []))
+        page_token = resp.get("nextPageToken")
+        if not all_pages or not page_token or len(results) >= max_results:
+            break
+
+    return results
+
+
 def run_auth_flow(config: dict) -> None:
     """--auth コマンド: 対話認証フローを実行してトークンを保存"""
     print("🔑 OAuth2認証フローを開始します...")
