@@ -337,6 +337,42 @@ def analytics_response_to_records(response: dict) -> list[dict]:
     return [dict(zip(headers, row)) for row in response.get("rows", [])]
 
 
+# ── YouTube Reporting API クライアント ──────────────────────────────────
+import urllib.request
+
+def list_report_types(reporting_client) -> list[dict]:
+    resp = reporting_client.reportTypes().list().execute()
+    return resp.get("reportTypes", [])
+
+
+def list_reporting_jobs(reporting_client) -> list[dict]:
+    resp = reporting_client.jobs().list().execute()
+    return resp.get("jobs", [])
+
+
+def create_reporting_job(reporting_client, report_type_id: str, name: str) -> dict:
+    body = {"reportTypeId": report_type_id, "name": name}
+    return reporting_client.jobs().create(body=body).execute()
+
+
+def list_reports_for_job(reporting_client, job_id: str) -> list[dict]:
+    resp = reporting_client.jobs().reports().list(jobId=job_id).execute()
+    return resp.get("reports", [])
+
+
+def download_report(download_url: str, credentials) -> list[dict]:
+    """レポートCSVをダウンロードして辞書リストで返す"""
+    import io
+    req = urllib.request.Request(
+        download_url,
+        headers={"Authorization": f"Bearer {credentials.token}"},
+    )
+    with urllib.request.urlopen(req) as f:
+        content = f.read().decode("utf-8")
+    reader = csv.DictReader(io.StringIO(content))
+    return list(reader)
+
+
 def run_auth_flow(config: dict) -> None:
     """--auth コマンド: 対話認証フローを実行してトークンを保存"""
     print("🔑 OAuth2認証フローを開始します...")
