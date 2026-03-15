@@ -373,6 +373,84 @@ def download_report(download_url: str, credentials) -> list[dict]:
     return list(reader)
 
 
+# ── Google Ads API クライアント + ROI計算 ────────────────────────────────
+
+def build_google_ads_client(config: dict):
+    """Google Ads APIクライアントを構築"""
+    from google.ads.googleads.client import GoogleAdsClient as _GoogleAdsClient
+    credentials = {
+        "developer_token": config["ads"]["developer_token"],
+        "use_proto_plus": True,
+    }
+    token_file = config["auth"]["token_file"]
+    if Path(token_file).exists():
+        import json as _json
+        token_data = _json.loads(Path(token_file).read_text())
+        credentials.update({
+            "client_id": token_data.get("client_id"),
+            "client_secret": token_data.get("client_secret"),
+            "refresh_token": token_data.get("refresh_token"),
+        })
+    return _GoogleAdsClient.load_from_dict(credentials)
+
+
+def get_video_ad_spend(
+    ads_client,
+    customer_id: str,
+    start_date: str,
+    end_date: str,
+    video_id: str | None = None,
+) -> list[dict]:
+    """動画への広告費をGoogle Ads APIから取得"""
+    ga_service = ads_client.get_service("GoogleAdsService")
+    cid = customer_id.replace("-", "")
+
+    where_clause = f"WHERE segments.date BETWEEN '{start_date}' AND '{end_date}'"
+    if video_id:
+        where_clause += f" AND video.id = '{video_id}'"
+
+    query = f"""
+        SELECT
+            campaign.id,
+            campaign.name,
+            segments.date,
+            metrics.cost_micros,
+            metrics.video_views,
+            metrics.impressions
+        FROM campaign
+        {where_clause}
+        ORDER BY segments.date DESC
+    """
+
+    rows = []
+    for row in ga_service.search(customer_id=cid, query=query):
+        rows.append({
+            "campaign_id": str(row.campaign.id),
+            "campaign_name": row.campaign.name,
+            "date": row.segments.date,
+            "cost_yen": row.metrics.cost_micros / 1_000_000,
+            "video_views": row.metrics.video_views,
+            "impressions": row.metrics.impressions,
+        })
+    return rows
+
+
+def calculate_roi(
+    total_cost_yen: float,
+    subscribers_gained: int,
+    views: int,
+) -> dict:
+    """ROI指標を計算して返す"""
+    return {
+        "total_cost_yen": total_cost_yen,
+        "subscribers_gained": subscribers_gained,
+        "views": views,
+        "cost_per_subscriber_yen": total_cost_yen / subscribers_gained if subscribers_gained else None,
+        "cost_per_view_yen": total_cost_yen / views if views else None,
+        "subscriber_per_cost_ratio": subscribers_gained / total_cost_yen if total_cost_yen else None,
+    }
+
+
 def run_auth_flow(config: dict) -> None:
     """--auth コマンド: 対話認証フローを実行してトークンを保存"""
     print("🔑 OAuth2認証フローを開始します...")
