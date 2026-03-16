@@ -196,7 +196,7 @@ def list_videos(
 
     while True:
         params = dict(
-            part="snippet,contentDetails,statistics",
+            part="snippet,contentDetails",
             playlistId=uploads_id,
             maxResults=min(max_results - len(videos), 50),
         )
@@ -264,7 +264,6 @@ def get_video_analytics(
             "views", "estimatedMinutesWatched", "averageViewDuration",
             "averageViewPercentage", "subscribersGained", "subscribersLost",
             "likes", "dislikes", "comments", "shares",
-            "impressions", "impressionClickThroughRate",
         ]
     if dimensions is None:
         dimensions = ["day"]
