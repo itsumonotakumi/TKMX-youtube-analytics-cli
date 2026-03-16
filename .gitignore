@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# 仮想環境
+venv/
+.venv/
+env/
+
+# 認証情報（絶対にコミットしない）
+client_secrets.json
+client_secret.json
+token.json
+*.token
+credentials.json
+service_account.json
+
+# 設定ファイル（ローカル）
+config.toml
+.env
+.env.*
+
+# テスト・カバレッジ
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# エディタ
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
