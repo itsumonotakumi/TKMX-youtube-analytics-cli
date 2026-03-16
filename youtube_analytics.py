@@ -865,7 +865,10 @@ def main() -> int:
                     client_secrets=config["auth"]["client_secrets"],
                     scopes=ALL_SCOPES,
                 )
-            yt = build_youtube_data_client(config["auth"]["api_key"] or "")
+            if config["auth"]["api_key"]:
+                yt = build_youtube_data_client(config["auth"]["api_key"])
+            else:
+                yt = build("youtube", "v3", credentials=creds)
         result["channel_info"] = get_channel_info(yt, args.channel)
 
     if args.videos or args.all_data:
@@ -873,7 +876,10 @@ def main() -> int:
             print("エラー: --videos で自チャンネルを取得するには OAuth2 認証が必要です。--auth を実行してください。",
                   file=sys.stderr)
             return 1
-        yt = build_youtube_data_client(config["auth"]["api_key"] or "")
+        if config["auth"]["api_key"]:
+            yt = build_youtube_data_client(config["auth"]["api_key"])
+        else:
+            yt = build("youtube", "v3", credentials=creds)
         result["videos"] = list_videos(
             yt, channel_id=args.channel,
             max_results=max_res, all_pages=args.all_pages,
